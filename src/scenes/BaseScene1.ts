@@ -1,8 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { Grid, AStarFinder } from "pathfinding";
+import { Grid, AStarFinder, FinderOptions } from "pathfinding";
 // import { PathfindingUtilities } from "../utilities/pathfinding"; // Import your utilities here
-
 export default class BaseScene1 {
   public renderer: THREE.WebGLRenderer = new THREE.WebGLRenderer();
   public scene: THREE.Scene = new THREE.Scene();
@@ -71,7 +70,13 @@ export default class BaseScene1 {
     this.scene.add(light);
 
     this.grid = new Grid(10, 10);
-    this.pathfinder = new AStarFinder();
+    this.pathfinder = new AStarFinder({
+      allowDiagonal: true,
+      dontCrossCorners: true,
+      heuristic: function (dx, dy) {
+        return dx + dy;
+      },
+    } as FinderOptions);
 
     this.raycaster = new THREE.Raycaster();
     this.mouse = new THREE.Vector2();
@@ -200,9 +205,97 @@ export default class BaseScene1 {
     return start.distanceTo(end) <= range;
   }
 
+  // Function to calculate a point on the parabola at parameter t
+  parabolaPoint(
+    t: number,
+    start: THREE.Vector3,
+    end: THREE.Vector3,
+    vertex: THREE.Vector3,
+  ) {
+    const x = start.x * (1 - t) + end.x * t;
+    const z = start.z * (1 - t) + end.z * t;
+    const y = (1 - 4 * (t - 0.5) * (t - 0.5)) * vertex.y;
+    return new THREE.Vector3(x, y, z);
+  }
+
+  // Utility function to draw a parabola
+  drawParabola(startVec: THREE.Vector3, endVec: THREE.Vector3, color: number) {
+    // Calculate parabola vertex (the highest point)
+    const vertexHeight = 5; // Adjust this value as needed for the curve
+    const vertex = new THREE.Vector3(
+      (startVec.x + endVec.x) / 2,
+      vertexHeight,
+      (startVec.z + endVec.z) / 2,
+    );
+
+    // Function to calculate a point on the parabola at parameter t
+    const parabolaPoint = (
+      t: number,
+      start: THREE.Vector3,
+      end: THREE.Vector3,
+      vertex: THREE.Vector3,
+    ) => {
+      const x = start.x * (1 - t) + end.x * t;
+      const z = start.z * (1 - t) + end.z * t;
+      const y = (1 - 4 * (t - 0.5) * (t - 0.5)) * vertex.y;
+      return new THREE.Vector3(x, y, z);
+    };
+
+    // Create parabola points
+    const parabolaPoints = [];
+    const segments = 20; // Increase for a smoother curve
+    for (let i = 0; i <= segments; i++) {
+      const t = i / segments;
+      parabolaPoints.push(parabolaPoint(t, startVec, endVec, vertex));
+    }
+
+    // Create geometry and line for the parabola
+    const parabolaGeometry = new THREE.BufferGeometry().setFromPoints(
+      parabolaPoints,
+    );
+    const parabolaMaterial = new THREE.LineBasicMaterial({ color });
+    const parabolaLine = new THREE.Line(parabolaGeometry, parabolaMaterial);
+
+    // Add the parabola line to the path group
+    this.pathGroup.add(parabolaLine);
+  }
+
   visualizePath(path: number[][]) {
     // Clear previous path visualization
     this.pathGroup.clear();
+
+    if (path.length === 0 || !this.startPoint || !this.endPoint) {
+      console.log("No path found or start/end point not set");
+      return; // No path to visualize or no start/end point set
+    }
+
+    // Calculate parabola vertex (the highest point)
+    const startVec = new THREE.Vector3().copy(this.startPoint.position);
+    const endVec = new THREE.Vector3().copy(this.endPoint.position);
+    const vertexHeight = 5; // Adjust this value as needed for the curve
+    const vertex = new THREE.Vector3(
+      (startVec.x + endVec.x) / 2,
+      vertexHeight,
+      (startVec.z + endVec.z) / 2,
+    );
+
+    // Create parabola points
+    const parabolaPoints = [];
+    const segments = 20; // Increase for a smoother curve
+    for (let i = 0; i <= segments; i++) {
+      const t = i / segments;
+      parabolaPoints.push(this.parabolaPoint(t, startVec, endVec, vertex));
+    }
+
+    // Create geometry and line for the parabola
+    const parabolaGeometry = new THREE.BufferGeometry().setFromPoints(
+      parabolaPoints,
+    );
+    const parabolaMaterial = new THREE.LineBasicMaterial({ color: 0xff0000 });
+    const parabolaLine = new THREE.Line(parabolaGeometry, parabolaMaterial);
+
+    // Add the parabola line to the path group
+    this.pathGroup.add(parabolaLine);
 
     if (path.length === 0) {
       console.log("No path found");
